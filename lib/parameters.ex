@@ -1,4 +1,4 @@
-defmodule Parameter do
+defmodule Parameters do
   defmacro __using__(_) do
     quote do
       import unquote(__MODULE__)
@@ -50,11 +50,11 @@ defmodule Parameter do
               params =
                 changeset
                 |> Ecto.Changeset.apply_changes()
-                |> Parameter.from_schema()
+                |> Parameters.from_schema()
 
               %{conn | params: params}
             else
-              raise Parameter.InvalidError, changeset: %{changeset | action: :parameter}
+              raise Parameters.InvalidError, changeset: %{changeset | action: :parameters}
             end
           else
             conn

@@ -1,8 +1,8 @@
-defmodule ParameterTest do
+defmodule ParametersTest do
   use ExUnit.Case
-  doctest Parameter
+  doctest Parameters
 
   test "greets the world" do
-    assert Parameter.hello() == :world
+    assert Parameters.hello() == :world
   end
 end

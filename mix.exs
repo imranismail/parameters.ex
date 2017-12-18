@@ -1,9 +1,9 @@
-defmodule Parameter.Mixfile do
+defmodule Parameters.Mixfile do
   use Mix.Project
 
   def project do
     [
-      app: :parameter,
+      app: :parameters,
       version: "0.1.0",
       elixir: "~> 1.5",
       start_permanent: Mix.env == :prod,

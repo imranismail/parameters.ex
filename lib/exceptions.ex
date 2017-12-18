@@ -1,9 +1,9 @@
-defmodule Parameter.InvalidError do
+defmodule Parameters.InvalidError do
   defexception [:changeset, plug_status: 400]
 
   def message(value) do
     """
-    Invalid parameters
+    Invalid parameterss
 
       #{inspect(error_messages(value.changeset))}
     """
