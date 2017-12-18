@@ -50,11 +50,11 @@ defmodule Parameter do
               params =
                 changeset
                 |> Ecto.Changeset.apply_changes()
-                |> Web.Params.from_schema()
+                |> Parameter.from_schema()
 
               %{conn | params: params}
             else
-              raise Web.InvalidParamsError, changeset: %{changeset | action: :params}
+              raise Parameter.InvalidError, changeset: %{changeset | action: :parameter}
             end
           else
             conn
