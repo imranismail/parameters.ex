@@ -25,8 +25,8 @@ defmodule Parameters do
       quote do
         defp __changeset__(action, schema, params) do
           groups    = schema.__struct__.__params__(:groups)
-          optional  = schema.__struct__.__params__(:optional)
-          required  = schema.__struct__.__params__(:required)
+          optional  = schema.__struct__.__params__(:optional) |> Keyword.keys()
+          required  = schema.__struct__.__params__(:required) |> Keyword.keys()
 
           changeset =
             schema
@@ -94,17 +94,17 @@ defmodule Parameters do
     end
   end
 
-  defmacro requires(field, type) do
+  defmacro requires(field, type, opts \\ []) do
     quote do
-      @required unquote(field)
-      field unquote(field), unquote(type)
+      @required {unquote(field), unquote(opts)}
+      field unquote(field), unquote(type), unquote(opts)
     end
   end
 
-  defmacro optional(field, type) do
+  defmacro optional(field, type, opts \\ []) do
     quote do
-      @optional unquote(field)
-      field unquote(field), unquote(type)
+      @optional {unquote(field), unquote(opts)}
+      field unquote(field), unquote(type), unquote(opts)
     end
   end
 
@@ -128,7 +128,7 @@ defmodule Parameters do
         unquote(block)
       end
 
-      embeds_one unquote(field), Module.concat(__MODULE__, Macro.camelize("#{unquote(field)}"))
+      embeds_one unquote(field), Module.concat(__MODULE__, Macro.camelize("#{unquote(field)}")), unquote(opts)
     end
   end
 end
