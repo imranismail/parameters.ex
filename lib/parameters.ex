@@ -9,15 +9,13 @@ defmodule Parameters do
     end
   end
 
-  def from_schema(schema) do
+  def from_schema({key, %_struct{} = val}), do: {key, from_schema(val)}
+  def from_schema({key, val}), do: {key, val}
+  def from_schema(%_struct{} = schema) do
     schema
     |> Map.from_struct()
-    |> Enum.reduce(%{}, fn
-      {key, %_struct{__meta__: _} = schema}, acc ->
-        Map.put(acc, key, from_schema(schema))
-      {key, val}, acc ->
-        Map.put(acc, key, val)
-    end)
+    |> Enum.map(&from_schema/1)
+    |> Enum.into(%{})
   end
 
   defmacro __before_compile__(env) do
