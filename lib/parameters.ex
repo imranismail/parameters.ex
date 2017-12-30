@@ -9,12 +9,19 @@ defmodule Parameters do
     end
   end
 
-  def from_schema({key, %_struct{} = val}), do: {key, from_schema(val)}
-  def from_schema({key, val}), do: {key, val}
-  def from_schema(%_struct{} = schema) do
+  def from_schema(%module{} = schema) do
+    embeds = module.__schema__(:embeds)
+    mapper = fn {key, val} ->
+      if key in embeds do
+        {key, from_schema(val)}
+      else
+        {key, val}
+      end
+    end
+
     schema
     |> Map.from_struct()
-    |> Enum.map(&from_schema/1)
+    |> Enum.map(mapper)
     |> Enum.into(%{})
   end
 
