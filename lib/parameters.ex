@@ -28,7 +28,7 @@ defmodule Parameters do
   defmacro __before_compile__(env) do
     for {action, module} <- Module.get_attribute(env.module, :params) do
       quote do
-        defp __changeset__(action, schema, params) do
+        defp __changeset__(unquote(action), schema, params) do
           groups    = schema.__struct__.__params__(:groups)
           optional  = schema.__struct__.__params__(:optional) |> Keyword.keys()
           required  = schema.__struct__.__params__(:required) |> Keyword.keys()
@@ -40,7 +40,7 @@ defmodule Parameters do
 
           Enum.reduce(groups, changeset, fn {key, opts}, changeset ->
             opts = Keyword.put_new(opts, :with, fn schema, params ->
-              __changeset__(action, schema, params)
+              __changeset__(unquote(action), schema, params)
             end)
 
             Ecto.Changeset.cast_embed(changeset, key, opts)

@@ -3,7 +3,7 @@ defmodule Parameters.InvalidError do
 
   def message(value) do
     """
-    Invalid parameterss
+    Invalid parameters
 
       #{inspect(error_messages(value.changeset))}
     """
