@@ -3,137 +3,182 @@ defmodule Parameters do
     quote do
       import unquote(__MODULE__)
 
-      Module.register_attribute(__MODULE__, :params, accumulate: true)
+      @on_definition {Parameters, :define}
+      @before_compile {Parameters, :compile}
 
-      @before_compile unquote(__MODULE__)
+      Module.register_attribute(__MODULE__, :parameters, accumulate: true)
     end
   end
 
-  def from_schema(%module{} = schema) do
-    embeds = module.__schema__(:embeds)
-    mapper = fn {key, val} ->
-      if key in embeds do
-        {key, from_schema(val)}
-      else
-        {key, val}
+  def define(%{module: module}, _kind, name, _args, _guards, _body) do
+    defs = Module.get_attribute(module, :parameters_block)
+    Module.put_attribute(module, :parameters, {name, defs})
+    Module.delete_attribute(module, :parameters_block)
+  end
+
+  def required_fields({:__block__, _metadata, nodes}), do: required_fields(nodes)
+  def required_fields(node) when is_tuple(node), do: required_fields([node])
+
+  def required_fields(nodes) when is_list(nodes) do
+    for {name, _metadata, args} <- nodes, name == :requires do
+      case args do
+        [field, _type, [do: _defs]] ->
+          {:embed, field, []}
+
+        [field, _type, opts] ->
+          {:field, field, opts}
+
+        [field, _type] ->
+          {:field, field, []}
       end
     end
-
-    schema
-    |> Map.from_struct()
-    |> Enum.map(mapper)
-    |> Enum.into(%{})
   end
 
-  defmacro __before_compile__(env) do
-    for {action, module} <- Module.get_attribute(env.module, :params) do
-      quote do
-        defp __changeset__(unquote(action), schema, params) do
-          groups    = schema.__struct__.__params__(:groups)
-          optional  = schema.__struct__.__params__(:optional) |> Keyword.keys()
-          required  = schema.__struct__.__params__(:required) |> Keyword.keys()
+  def optional_fields({:__block__, _metadata, nodes}), do: optional_fields(nodes)
+  def optional_fields(node) when is_tuple(node), do: optional_fields([node])
 
-          changeset =
-            schema
-            |> Ecto.Changeset.cast(params, optional ++ required)
-            |> Ecto.Changeset.validate_required(required)
+  def optional_fields(nodes) when is_list(nodes) do
+    for {name, _metadata, args} <- nodes, name == :optional do
+      case args do
+        [field, _type, [do: _defs]] ->
+          {:embed, field, []}
 
-          Enum.reduce(groups, changeset, fn {key, opts}, changeset ->
-            opts = Keyword.put_new(opts, :with, fn schema, params ->
-              __changeset__(unquote(action), schema, params)
-            end)
+        [field, _type, opts] ->
+          {:field, field, opts}
 
-            Ecto.Changeset.cast_embed(changeset, key, opts)
-          end)
-        end
+        [field, _type] ->
+          {:field, field, []}
+      end
+    end
+  end
 
-        defp __params__(conn, unquote(action)) do
-          if conn.private.phoenix_action == unquote(action) do
-            changeset = __changeset__(unquote(action), struct(unquote(module)), conn.params)
+  def schema_fields({:__block__, _metadata, nodes}), do: schema_fields(nodes)
+  def schema_fields(node) when is_tuple(node), do: schema_fields([node])
 
-            if changeset.valid? do
-              params =
-                changeset
-                |> Ecto.Changeset.apply_changes()
-                |> Parameters.from_schema()
-
-              %{conn | params: params}
-            else
-              raise Parameters.InvalidError, changeset: %{changeset | action: :parameters}
+  def schema_fields(nodes) when is_list(nodes) do
+    for {_name, _metadata, args} <- nodes do
+      case args do
+        [field, :map, [do: defs]] ->
+          quote do
+            embeds_one unquote(field), unquote(Macro.camelize("#{field}")) do
+              unquote(schema_fields(defs))
             end
-          else
-            conn
           end
+
+        [field, :array, [do: defs]] ->
+          quote do
+            embeds_many unquote(field), unquote(Macro.camelize("#{field}")) do
+              unquote(schema_fields(defs))
+            end
+          end
+
+        [field, type] ->
+          quote do
+            field unquote(field), unquote(type)
+          end
+
+        [field, type, opts] ->
+          quote do
+            field unquote(field), unquote(type), unquote(opts)
+          end
+      end
+    end
+  end
+
+  defmacro compile(env) do
+    for {action, ast} <- Module.get_attribute(env.module, :parameters) do
+      module = Module.concat([env.module, Parameters, Macro.camelize("#{action}")])
+      fields = schema_fields(ast)
+      required_fields = required_fields(ast)
+      optional_fields = optional_fields(ast)
+
+      quote do
+        defmodule unquote(module) do
+          use Ecto.Schema
+
+          embedded_schema do
+            unquote(fields)
+          end
+
+          def build(params) do
+            changeset =
+              __MODULE__
+              |> struct()
+              |> Ecto.Changeset.change()
+
+            changeset =
+              Enum.reduce(__parameters__(:optional), changeset, fn {type, field, _opts}, acc ->
+                case type do
+                  :field ->
+                    Ecto.Changeset.cast(acc, params, [field])
+
+                  :embed ->
+                    Ecto.Changeset.cast_embed(acc, field, required: false)
+                end
+              end)
+
+            changeset =
+              Enum.reduce(__parameters__(:required), changeset, fn {type, field, _opts}, acc ->
+                case type do
+                  :field ->
+                    acc
+                    |> Ecto.Changeset.cast(params, [field])
+                    |> Ecto.Changeset.validate_required(field)
+
+                  :embed ->
+                    Ecto.Changeset.cast_embed(acc, field, required: true)
+                end
+              end)
+
+            changeset
+          end
+
+          def __parameters__(:required), do: unquote(Macro.escape(required_fields, []))
+          def __parameters__(:optional), do: unquote(Macro.escape(optional_fields, []))
+        end
+
+        def __parameters__(:params, unquote(action), params) do
+          __MODULE__
+          |> changeset_for(unquote(action), params)
+          |> params_for()
+        end
+
+        def __parameters__(:changeset, unquote(action), params) do
+          apply(unquote(module), :build, [params])
         end
       end
     end
   end
 
-  defmacro params(action, do: block) do
+  defmacro params(do: block) do
     quote do
-      module = Module.concat(__MODULE__, Macro.camelize("#{unquote(action)}"))
-
-      @action module
-
-      @params {unquote(action), module}
-
-      plug :__params__, unquote(action)
-
-      defmodule module do
-        use Ecto.Schema
-
-        @primary_key false
-
-        Module.register_attribute __MODULE__, :required, accumulate: true
-        Module.register_attribute __MODULE__, :optional, accumulate: true
-        Module.register_attribute __MODULE__, :groups, accumulate: true
-
-        embedded_schema do
-          unquote(block)
-        end
-
-        def __params__(:required), do: @required
-        def __params__(:optional), do: @optional
-        def __params__(:groups), do: @groups
-      end
+      @parameters_block unquote(Macro.escape(block))
     end
   end
 
-  defmacro requires(field, type, opts \\ []) do
-    quote do
-      @required {unquote(field), unquote(opts)}
-      field unquote(field), unquote(type), unquote(opts)
-    end
+  def params_for(%Ecto.Changeset{} = changeset) do
+    Ecto.Changeset.apply_action(changeset, :insert)
   end
 
-  defmacro optional(field, type, opts \\ []) do
-    quote do
-      @optional {unquote(field), unquote(opts)}
-      field unquote(field), unquote(type), unquote(opts)
-    end
+  def params_for(%{
+        private: %{phoenix_controller: controller, phoenix_action: action},
+        params: params
+      }) do
+    controller.__parameters__(:params, action, params)
   end
 
-  defmacro group(field, do: block) do
-    quote do
-      @groups {unquote(field), []}
-
-      params unquote(field) do
-        unquote(block)
-      end
-
-      embeds_one unquote(field), Module.concat(__MODULE__, Macro.camelize("#{unquote(field)}"))
-    end
+  def params_for(controller, action, params) do
+    controller.__parameters__(:params, action, params)
   end
 
-  defmacro group(field, opts, do: block) when is_list(opts) do
-    quote do
-      @groups {unquote(field), unquote(opts)}
+  def changeset_for(controller, action, params) do
+    controller.__parameters__(:changeset, action, params)
+  end
 
-      params unquote(field) do
-        unquote(block)
-      end
-
-      embeds_one unquote(field), Module.concat(__MODULE__, Macro.camelize("#{unquote(field)}")), unquote(opts)
-    end
+  def changeset_for(%{
+        private: %{phoenix_controller: controller, phoenix_action: action},
+        params: params
+      }) do
+    controller.__parameters__(:changeset, action, params)
   end
 end

@@ -6,7 +6,7 @@ defmodule Parameters.Mixfile do
       app: :parameters,
       version: "1.0.0",
       elixir: "~> 1.5",
-      start_permanent: Mix.env == :prod,
+      start_permanent: Mix.env() == :prod,
       description: description(),
       package: package(),
       deps: deps()
@@ -20,11 +20,13 @@ defmodule Parameters.Mixfile do
   end
 
   defp package do
-    [name: :parameters,
-     files: ["lib", "mix.exs", "README*", "LICENSE*"],
-     maintainers: ["Imran Ismail"],
-     licenses: ["MIT"],
-     links: %{"GitHub" => "https://github.com/imranismail/parameters.ex"}]
+    [
+      name: :parameters,
+      files: ["lib", "mix.exs", "README*", "LICENSE*"],
+      maintainers: ["Imran Ismail"],
+      licenses: ["MIT"],
+      links: %{"GitHub" => "https://github.com/imranismail/parameters.ex"}
+    ]
   end
 
   # Run "mix help compile.app" to learn about applications.
