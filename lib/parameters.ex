@@ -11,8 +11,8 @@ defmodule Parameters do
   end
 
   def define(%{module: module}, _kind, name, _args, _guards, _body) do
-    defs = Module.get_attribute(module, :parameters_block)
-    Module.put_attribute(module, :parameters, {name, defs})
+    ast = Module.get_attribute(module, :parameters_block)
+    Module.put_attribute(module, :parameters, {name, ast})
     Module.delete_attribute(module, :parameters_block)
   end
 
