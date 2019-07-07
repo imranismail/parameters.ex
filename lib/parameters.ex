@@ -3,143 +3,27 @@ defmodule Parameters do
     quote do
       import unquote(__MODULE__)
 
-      @on_definition {Parameters, :define}
-      @before_compile {Parameters, :compile}
+      @on_definition Parameters
+      @before_compile Parameters
 
       Module.register_attribute(__MODULE__, :parameters, accumulate: true)
     end
   end
 
-  def define(%{module: module}, _kind, name, _args, _guards, _body) do
-    ast = Module.get_attribute(module, :parameters_block)
-    Module.put_attribute(module, :parameters, {name, ast})
+  def __on_definition__(%{module: module}, _kind, name, _args, _guards, _body) do
+    nodes = Module.get_attribute(module, :parameters_block)
+    Module.put_attribute(module, :parameters, {name, nodes})
     Module.delete_attribute(module, :parameters_block)
   end
 
-  def required_fields({:__block__, _metadata, nodes}), do: required_fields(nodes)
-  def required_fields(node) when is_tuple(node), do: required_fields([node])
-
-  def required_fields(nodes) when is_list(nodes) do
-    for {name, _metadata, args} <- nodes, name == :requires do
-      case args do
-        [field, _type, [do: _defs]] ->
-          {:embed, field, []}
-
-        [field, _type, opts] ->
-          {:field, field, opts}
-
-        [field, _type] ->
-          {:field, field, []}
-      end
-    end
-  end
-
-  def optional_fields({:__block__, _metadata, nodes}), do: optional_fields(nodes)
-  def optional_fields(node) when is_tuple(node), do: optional_fields([node])
-
-  def optional_fields(nodes) when is_list(nodes) do
-    for {name, _metadata, args} <- nodes, name == :optional do
-      case args do
-        [field, _type, [do: _defs]] ->
-          {:embed, field, []}
-
-        [field, _type, opts] ->
-          {:field, field, opts}
-
-        [field, _type] ->
-          {:field, field, []}
-      end
-    end
-  end
-
-  def schema_fields({:__block__, _metadata, nodes}), do: schema_fields(nodes)
-  def schema_fields(node) when is_tuple(node), do: schema_fields([node])
-
-  def schema_fields(nodes) when is_list(nodes) do
-    for {_name, _metadata, args} <- nodes do
-      case args do
-        [field, :map, [do: defs]] ->
-          quote do
-            embeds_one unquote(field), unquote(Macro.camelize("#{field}")) do
-              unquote(schema_fields(defs))
-            end
-          end
-
-        [field, :array, [do: defs]] ->
-          quote do
-            embeds_many unquote(field), unquote(Macro.camelize("#{field}")) do
-              unquote(schema_fields(defs))
-            end
-          end
-
-        [field, type] ->
-          quote do
-            field unquote(field), unquote(type)
-          end
-
-        [field, type, opts] ->
-          quote do
-            field unquote(field), unquote(type), unquote(opts)
-          end
-      end
-    end
-  end
-
-  defmacro compile(env) do
-    for {action, ast} <- Module.get_attribute(env.module, :parameters), not is_nil(ast) do
-      module = Module.concat([env.module, Parameters, Macro.camelize("#{action}")])
-      fields = schema_fields(ast)
-      required_fields = required_fields(ast)
-      optional_fields = optional_fields(ast)
+  defmacro __before_compile__(env) do
+    for {action, nodes} <- Module.get_attribute(env.module, :parameters), not is_nil(nodes) do
+      name = Module.concat(Parameters, Macro.camelize("#{action}"))
 
       quote do
-        defmodule unquote(module) do
-          use Ecto.Schema
+        unquote(define_schema(name, nodes))
 
-          embedded_schema do
-            unquote(fields)
-          end
-
-          def build(params) do
-            changeset =
-              __MODULE__
-              |> struct()
-              |> Ecto.Changeset.change()
-
-            changeset =
-              Enum.reduce(__parameters__(:optional), changeset, fn {type, field, _opts}, acc ->
-                case type do
-                  :field ->
-                    Ecto.Changeset.cast(acc, params, [field])
-
-                  :embed ->
-                    Ecto.Changeset.cast_embed(acc, field, required: false)
-                end
-              end)
-
-            changeset =
-              Enum.reduce(__parameters__(:required), changeset, fn {type, field, _opts}, acc ->
-                case type do
-                  :field ->
-                    acc
-                    |> Ecto.Changeset.cast(params, [field])
-                    |> Ecto.Changeset.validate_required(field)
-
-                  :embed ->
-                    Ecto.Changeset.cast_embed(acc, field, required: true)
-                end
-              end)
-
-            changeset
-          end
-
-          def __parameters__(:required), do: unquote(Macro.escape(required_fields, []))
-          def __parameters__(:optional), do: unquote(Macro.escape(optional_fields, []))
-        end
-
-        def __parameters__(unquote(action), params) do
-          apply(unquote(module), :build, [params])
-        end
+        unquote(define_reflections(name, action))
       end
     end
   end
@@ -150,23 +34,23 @@ defmodule Parameters do
     end
   end
 
+  def params_for(controller, action, params) do
+    controller
+    |> changeset_for(action, params)
+    |> params_for()
+  end
+
   def params_for(%Ecto.Changeset{} = changeset) do
-    Ecto.Changeset.apply_action(changeset, :insert)
+    with {:ok, schema} <- Ecto.Changeset.apply_action(changeset, :insert) do
+      {:ok, schema_to_map(schema)}
+    end
   end
 
   def params_for(%{
         private: %{phoenix_controller: controller, phoenix_action: action},
         params: params
       }) do
-    controller
-    |> changeset_for(action, params)
-    |> params_for()
-  end
-
-  def params_for(controller, action, params) do
-    controller
-    |> changeset_for(action, params)
-    |> params_for()
+    params_for(controller, action, params)
   end
 
   def changeset_for(controller, action, params) do
@@ -178,5 +62,172 @@ defmodule Parameters do
         params: params
       }) do
     changeset_for(controller, action, params)
+  end
+
+  defp define_fields({:__block__, _metadata, nodes}), do: define_fields(nodes)
+  defp define_fields(node) when is_tuple(node), do: define_fields([node])
+
+  defp define_fields(nodes) when is_list(nodes) do
+    field_definitions =
+      for {_name, _metadata, args} <- nodes do
+        case args do
+          [field, :map, [do: _defs]] ->
+            quote do
+              embeds_one unquote(field),
+                         Module.concat(__MODULE__, Macro.camelize("#{unquote(field)}"))
+            end
+
+          [field, :array, [do: _defs]] ->
+            quote do
+              embeds_many unquote(field),
+                          Module.concat(__MODULE__, Macro.camelize("#{unquote(field)}"))
+            end
+
+          [field, type] ->
+            quote do
+              field unquote(field), unquote(type)
+            end
+
+          [field, type, opts] ->
+            quote do
+              field unquote(field), unquote(type), unquote(opts)
+            end
+        end
+      end
+
+    quote do
+      use Ecto.Schema
+
+      @primary_key false
+
+      embedded_schema do
+        unquote(field_definitions)
+      end
+    end
+  end
+
+  defp define_changeset({:__block__, _metadata, nodes}), do: define_changeset(nodes)
+  defp define_changeset(node) when is_tuple(node), do: define_changeset([node])
+
+  defp define_changeset(nodes) when is_list(nodes) do
+    key_fn = fn
+      {:requires, _metadata, [_field, _type, do: _defs]} -> :required_embeds
+      {:requires, _metadata, [_field, _type, [do: _defs]]} -> :required_embeds
+      {:optional, _metadata, [_field, _type, do: _defs]} -> :optional_embeds
+      {:optional, _metadata, [_field, _type, [do: _defs]]} -> :optional_embeds
+      {:requires, _metadata, _args} -> :required_fields
+      {:optional, _metadata, _args} -> :optional_fields
+    end
+
+    value_fn = fn
+      {_name, _metadata, [field, _type]} -> {field, []}
+      {_name, _metadata, [field, _type, opts]} -> {field, opts}
+    end
+
+    fields = Enum.group_by(nodes, key_fn, value_fn)
+
+    required_fields = Map.get(fields, :required_fields, [])
+
+    permitted_fields =
+      fields
+      |> Map.get(:optional_fields, [])
+      |> Enum.concat(required_fields)
+      |> Enum.map(&Kernel.elem(&1, 0))
+
+    required_fields = Enum.map(required_fields, &Kernel.elem(&1, 0))
+
+    optional_embeds =
+      fields
+      |> Map.get(:optional_embeds, [])
+      |> Enum.map(&Kernel.elem(&1, 0))
+
+    required_embeds =
+      fields
+      |> Map.get(:required_embeds, [])
+      |> Enum.map(&Kernel.elem(&1, 0))
+
+    quote do
+      def changeset(schema, params) do
+        changeset =
+          schema
+          |> Ecto.Changeset.cast(params, unquote(permitted_fields))
+          |> Ecto.Changeset.validate_required(unquote(required_fields))
+
+        changeset =
+          Enum.reduce(unquote(optional_embeds), changeset, fn item, acc ->
+            Ecto.Changeset.cast_embed(acc, item)
+          end)
+
+        changeset =
+          Enum.reduce(unquote(required_embeds), changeset, fn item, acc ->
+            Ecto.Changeset.cast_embed(acc, item, required: true)
+          end)
+
+        changeset
+      end
+    end
+  end
+
+  defp define_embeds({:__block__, _metadata, nodes}), do: define_embeds(nodes)
+  defp define_embeds(node) when is_tuple(node), do: define_embeds([node])
+
+  defp define_embeds(nodes) when is_list(nodes) do
+    nodes
+    |> Enum.filter(fn
+      {_name, _metadata, [_field, _type, do: _defs]} -> true
+      {_name, _metadata, [_field, _type, [do: _defs]]} -> true
+      _ -> false
+    end)
+    |> Enum.map(fn
+      {_name, _metadata, [field, _type, do: nodes]} ->
+        define_schema(Macro.camelize("#{field}"), nodes)
+
+      {_name, _metadata, [field, _type, [do: nodes]]} ->
+        define_schema(Macro.camelize("#{field}"), nodes)
+    end)
+  end
+
+  defp define_schema(name, {:__block__, _metadata, nodes}), do: define_schema(name, nodes)
+  defp define_schema(name, node) when is_tuple(node), do: define_schema(name, [node])
+
+  defp define_schema(name, nodes) when is_list(nodes) do
+    quote do
+      defmodule Module.concat(__MODULE__, unquote(name)) do
+        unquote(define_embeds(nodes))
+
+        unquote(define_fields(nodes))
+
+        unquote(define_changeset(nodes))
+      end
+    end
+  end
+
+  defp define_reflections(name, action) do
+    quote do
+      def __parameters__(unquote(action), params) do
+        module = Module.concat(__MODULE__, unquote(name))
+        apply(module, :changeset, [struct(module), params])
+      end
+    end
+  end
+
+  defp schema_to_map(nil), do: nil
+  defp schema_to_map(schemas) when is_list(schemas), do: Enum.map(schemas, &schema_to_map/1)
+
+  defp schema_to_map(%module{} = schema) do
+    embeds = module.__schema__(:embeds)
+
+    mapper = fn {key, val} ->
+      if key in embeds do
+        {key, schema_to_map(val)}
+      else
+        {key, val}
+      end
+    end
+
+    schema
+    |> Map.from_struct()
+    |> Enum.map(mapper)
+    |> Enum.into(%{})
   end
 end

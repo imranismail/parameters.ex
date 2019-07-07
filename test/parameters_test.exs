@@ -6,12 +6,17 @@ defmodule ParametersTest do
     use Parameters
 
     params do
-      requires :root_req, :string
+      requires :root_req, :string, default: "required"
       optional :root_opt, :integer
 
       requires :profile, :map do
         requires :in_group_req, :string
         optional :in_group_opt, :string
+
+        optional :tendencies, :array do
+          optional :name, :string
+          optional :dunno, :string
+        end
       end
 
       requires :profiles, :array do
@@ -20,20 +25,30 @@ defmodule ParametersTest do
     end
 
     def create(conn, _params) do
-      with {:ok, params} <- params_for(conn) do
-        params
-      end
+      conn
     end
   end
 
-  test "expects Ecto.Changeset when params_for/1 or params_for/2" do
-    params = %{}
+  @valid_params %{
+    root_opt: 1,
+    profile: %{
+      in_group_req: "required",
+      in_group_opt: "optional"
+    },
+    profiles: [
+      %{oneline: "required"}
+    ]
+  }
 
+  @invalid_params %{}
+
+  test "Schema.params_for/1" do
     conn = %{
-      params: params,
+      params: nil,
       private: %{phoenix_controller: ParametersTest.ControllerMock, phoenix_action: :create}
     }
 
-    assert {:error, %Ecto.Changeset{}} = ParametersTest.ControllerMock.create(conn, params)
+    assert {:ok, params} = Parameters.params_for(%{conn | params: @valid_params})
+    assert {:error, %Ecto.Changeset{}} = Parameters.params_for(%{conn | params: @invalid_params})
   end
 end
