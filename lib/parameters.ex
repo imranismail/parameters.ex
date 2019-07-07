@@ -11,19 +11,17 @@ defmodule Parameters do
   end
 
   def __on_definition__(%{module: module}, _kind, name, _args, _guards, _body) do
-    nodes = Module.get_attribute(module, :parameters_block)
-    Module.put_attribute(module, :parameters, {name, nodes})
-    Module.delete_attribute(module, :parameters_block)
+    if nodes = Module.get_attribute(module, :parameters_block) do
+      name = Module.concat([Parameters, module, Macro.camelize("#{name}")])
+      Module.put_attribute(module, :parameters, {name, nodes})
+      Module.delete_attribute(module, :parameters_block)
+    end
   end
 
   defmacro __before_compile__(env) do
-    for {action, nodes} <- Module.get_attribute(env.module, :parameters), not is_nil(nodes) do
-      name = Module.concat(Parameters, Macro.camelize("#{action}"))
-
+    for {name, nodes} <- Module.get_attribute(env.module, :parameters) do
       quote do
         unquote(define_schema(name, nodes))
-
-        unquote(define_reflections(name, action))
       end
     end
   end
@@ -54,7 +52,8 @@ defmodule Parameters do
   end
 
   def changeset_for(controller, action, params) do
-    apply(controller, :__parameters__, [action, params])
+    name = Module.concat([Parameters, controller, Macro.camelize("#{action}")])
+    apply(name, :changeset, [struct(name), params])
   end
 
   def changeset_for(%{
@@ -168,10 +167,10 @@ defmodule Parameters do
     end
   end
 
-  defp define_embeds({:__block__, _metadata, nodes}), do: define_embeds(nodes)
-  defp define_embeds(node) when is_tuple(node), do: define_embeds([node])
+  defp define_embeds(name, {:__block__, _metadata, nodes}), do: define_embeds(name, nodes)
+  defp define_embeds(name, node) when is_tuple(node), do: define_embeds(name, [node])
 
-  defp define_embeds(nodes) when is_list(nodes) do
+  defp define_embeds(name, nodes) when is_list(nodes) do
     nodes
     |> Enum.filter(fn
       {_name, _metadata, [_field, _type, do: _defs]} -> true
@@ -180,10 +179,12 @@ defmodule Parameters do
     end)
     |> Enum.map(fn
       {_name, _metadata, [field, _type, do: nodes]} ->
-        define_schema(Macro.camelize("#{field}"), nodes)
+        name = Module.concat(name, Macro.camelize("#{field}"))
+        define_schema(name, nodes)
 
       {_name, _metadata, [field, _type, [do: nodes]]} ->
-        define_schema(Macro.camelize("#{field}"), nodes)
+        name = Module.concat(name, Macro.camelize("#{field}"))
+        define_schema(name, nodes)
     end)
   end
 
@@ -192,21 +193,12 @@ defmodule Parameters do
 
   defp define_schema(name, nodes) when is_list(nodes) do
     quote do
-      defmodule Module.concat(__MODULE__, unquote(name)) do
-        unquote(define_embeds(nodes))
+      defmodule unquote(name) do
+        unquote(define_embeds(name, nodes))
 
         unquote(define_fields(nodes))
 
         unquote(define_changeset(nodes))
-      end
-    end
-  end
-
-  defp define_reflections(name, action) do
-    quote do
-      def __parameters__(unquote(action), params) do
-        module = Module.concat(__MODULE__, unquote(name))
-        apply(module, :changeset, [struct(module), params])
       end
     end
   end
