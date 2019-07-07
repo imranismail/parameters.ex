@@ -52,7 +52,7 @@ defmodule Parameters do
   end
 
   def changeset_for(controller, action, params) do
-    name = Module.concat([Parameters, controller, Macro.camelize("#{action}")])
+    name = Module.safe_concat([Parameters, controller, Macro.camelize("#{action}")])
     apply(name, :changeset, [struct(name), params])
   end
 
