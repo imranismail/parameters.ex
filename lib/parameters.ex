@@ -86,7 +86,7 @@ defmodule Parameters do
   end
 
   defmacro compile(env) do
-    for {action, ast} <- Module.get_attribute(env.module, :parameters) do
+    for {action, ast} <- Module.get_attribute(env.module, :parameters), not is_nil(ast) do
       module = Module.concat([env.module, Parameters, Macro.camelize("#{action}")])
       fields = schema_fields(ast)
       required_fields = required_fields(ast)
@@ -137,13 +137,7 @@ defmodule Parameters do
           def __parameters__(:optional), do: unquote(Macro.escape(optional_fields, []))
         end
 
-        def __parameters__(:params, unquote(action), params) do
-          __MODULE__
-          |> changeset_for(unquote(action), params)
-          |> params_for()
-        end
-
-        def __parameters__(:changeset, unquote(action), params) do
+        def __parameters__(unquote(action), params) do
           apply(unquote(module), :build, [params])
         end
       end
@@ -164,21 +158,25 @@ defmodule Parameters do
         private: %{phoenix_controller: controller, phoenix_action: action},
         params: params
       }) do
-    controller.__parameters__(:params, action, params)
+    controller
+    |> changeset_for(action, params)
+    |> params_for()
   end
 
   def params_for(controller, action, params) do
-    controller.__parameters__(:params, action, params)
+    controller
+    |> changeset_for(action, params)
+    |> params_for()
   end
 
   def changeset_for(controller, action, params) do
-    controller.__parameters__(:changeset, action, params)
+    apply(controller, :__parameters__, [action, params])
   end
 
   def changeset_for(%{
         private: %{phoenix_controller: controller, phoenix_action: action},
         params: params
       }) do
-    controller.__parameters__(:changeset, action, params)
+    changeset_for(controller, action, params)
   end
 end
