@@ -1,5 +1,7 @@
 # Parameters
 
+[![Build Status](https://travis-ci.com/imranismail/parameters.ex.svg?branch=master)](https://travis-ci.com/imranismail/parameters.ex)
+
 Declarative parameter validation riding on the shoulder of a giant.
 
 ## Installation
