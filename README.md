@@ -14,6 +14,12 @@ def deps do
 end
 ```
 
+## Goals
+
+- [X] Expressive and declarative but with the ability to extend via custom validation function
+- [ ] Support to express Ecto's built-in validators
+- [ ] Auto-generated documentation in the form of `@doc` and [Open API Specification](https://swagger.io/specification/)
+
 ## Usage
 
 Parameters behaves like the `@doc` attribute and basically annotates the function with information about the parameters.
