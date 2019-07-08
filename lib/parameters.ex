@@ -17,7 +17,7 @@ defmodule Parameters do
 
   def __on_definition__(%{module: module}, _kind, name, _args, _guards, _body) do
     if ast = Module.get_attribute(module, :parameters_block) do
-      Module.put_attribute(module, :parameters, get_params_node(name, ast))
+      Module.put_attribute(module, :parameters, ParamsNode.parse(name, ast))
       Module.delete_attribute(module, :parameters_block)
     end
   end
@@ -67,40 +67,6 @@ defmodule Parameters do
         params: params
       }) do
     changeset_for(module, fun, params)
-  end
-
-  defp get_params_node(name, {:__block__, _metadata, ast}), do: get_params_node(name, ast)
-  defp get_params_node(name, ast) when is_tuple(ast), do: get_params_node(name, [ast])
-
-  defp get_params_node(name, ast) when is_list(ast) do
-    Enum.reduce(ast, struct(ParamsNode), fn field, schema ->
-      Map.update!(schema, :fields, fn fields ->
-        [get_field_node(field) | fields]
-      end)
-    end)
-    |> Map.put(:id, name)
-    |> Map.update!(:fields, &Enum.reverse/1)
-  end
-
-  defp get_field_node({:__block__, _metadata, ast}), do: get_field_node(ast)
-  defp get_field_node(ast) when is_list(ast), do: Enum.map(ast, &get_field_node/1)
-
-  defp get_field_node({name, _metadata, args}) do
-    case args do
-      [field, type, [do: ast]] ->
-        opts = [required: name == :requires]
-        fields = get_field_node(ast)
-        fields = if is_list(fields), do: fields, else: [fields]
-        struct(FieldNode, id: field, type: type, options: opts, fields: fields)
-
-      [field, type, opts] ->
-        opts = Keyword.put(opts, :required, name == :requires)
-        struct(FieldNode, id: field, type: type, options: opts)
-
-      [field, type] ->
-        opts = [required: name == :requires]
-        struct(FieldNode, id: field, type: type, options: opts)
-    end
   end
 
   defp define_schema(parent, node) do
