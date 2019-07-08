@@ -47,11 +47,11 @@ Once the schema is declared, you can use `Parameters.params_for(conn | changeset
 Or if you'd like to extend the changeset with additional validations Parameters also exposes a function `Parameters.changeset_for(conn)` and `Parameters.changeset_for(module_defined_in, function_defined_at, params)` which allows you to do so like this:
 
 ```elixir
-{:ok, changeset} =
+{:ok, params} | {:error, changeset} =
   conn
-  |> Parameters.changeset_for()
-  |> Changeset.validate_change(&custom_validator_fn/2)
-  |> Parameters.params_for(params)
+  |> Parameters.changeset_for() # => %Ecto.Changeset{}
+  |> Changeset.validate_change(&custom_validator_fn/2) # => %Ecto.Changeset{} 
+  |> Parameters.params_for(params) # => Validate and return sanitized params
 ```
 
 ### Full Example
