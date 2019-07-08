@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.com/imranismail/parameters.ex.svg?branch=master)](https://travis-ci.com/imranismail/parameters.ex)
 
-Declarative parameter validation riding on the shoulder of a giant
+Expressive parameter validation riding on the shoulder of a giant
 
 ## Installation
 
@@ -16,7 +16,7 @@ end
 
 ## Usage
 
-Parameters behave like the `@doc` attribute and basically annotates the function with information about the parameters.
+Parameters behaves like the `@doc` attribute and basically annotates the function with information about the parameters.
 
 At the moment there are 4 macros for defining parameters. These are backed by Ecto's `field/3`, `embeds_one/3` and `embeds_many/3`.
 
