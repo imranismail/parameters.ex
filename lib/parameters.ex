@@ -23,12 +23,9 @@ defmodule Parameters do
   end
 
   defmacro __before_compile__(env) do
-    for schema <- Module.get_attribute(env.module, :parameters) do
-      parent = Module.concat(Parameters, env.module)
-
-      quote do
-        unquote(define_schema(parent, schema))
-      end
+    quote do
+      unquote(define_schemas(env.module))
+      unquote(define_reflections())
     end
   end
 
@@ -67,6 +64,25 @@ defmodule Parameters do
         params: params
       }) do
     changeset_for(module, fun, params)
+  end
+
+  defp define_reflections() do
+    quote do
+      def __parameters__ do
+        @parameters
+      end
+    end
+  end
+
+  defp define_schemas(module) do
+    parameters = Module.get_attribute(module, :parameters)
+    parent = Module.concat(Parameters, module)
+
+    for schema <- parameters do
+      quote do
+        unquote(define_schema(parent, schema))
+      end
+    end
   end
 
   defp define_schema(parent, node) do
