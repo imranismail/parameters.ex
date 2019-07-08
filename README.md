@@ -2,12 +2,9 @@
 
 [![Build Status](https://travis-ci.com/imranismail/parameters.ex.svg?branch=master)](https://travis-ci.com/imranismail/parameters.ex)
 
-Declarative parameter validation riding on the shoulder of a giant.
+Declarative parameter validation riding on the shoulder of a giant
 
 ## Installation
-
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `parameters` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
@@ -18,6 +15,46 @@ end
 ```
 
 ## Usage
+
+Parameters behave like the `@doc` attribute and basically annotates the function with information about the parameters.
+
+At the moment there are 4 macros for defining parameters. These are backed by Ecto's `field/3`, `embeds_one/3` and `embeds_many/3`.
+
+You can nest however deep you want and Parameters will take care of defining the Ecto schemas
+
+```elixir
+params do
+  optional :name, :string # => equivalent of `field :name, :string` and `cast`
+  
+  requires :username, :string # => equivalent of `field :username, :string` and `validate_required`
+
+  optional :book, :map do # => equivalent of `embeds_one` and `cast_embed`
+    requires :isbn, :string
+  end
+
+  requires :books, :array do # => equivalent of `embeds_many` and `cast_embed(required: true)`
+    requires :isbn, :string
+  end
+end
+```
+
+Once the schema is declared, you can use `Parameters.params_for(conn | changeset)` or `Parameters.params_for(module_defined_in, function_defined_at, params)` to validate any raw parameters.
+
+```elixir
+{:ok, sanitized_params} | {:error, changeset} = Parameters.params_for(conn)
+```
+
+Or if you'd like to extend the changeset with additional validations Parameters also exposes a function `Parameters.changeset_for(conn)` and `Parameters.changeset_for(module_defined_in, function_defined_at, params)` which allows you to do so like this:
+
+```elixir
+{:ok, changeset} =
+  conn
+  |> Parameters.changeset_for()
+  |> Changeset.validate_change(&custom_validator_fn/2)
+  |> Parameters.params_for(params)
+```
+
+### Full Example
 
 ```elixir
 defmodule MyApp.PostController do
@@ -44,17 +81,13 @@ defmodule MyApp.PostController do
   end
 
   def index(conn, _params) do
-    with {:ok, params} <- params_for(conn) do
+    with {:ok, params} <- Parameters.params_for(conn) do
       json(conn, params)
     else
       {:error, %Ecto.Changeset{}} ->
-        # do something
+        # handle error
     end
   end
 end
 ```
-
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at [https://hexdocs.pm/parameters](https://hexdocs.pm/parameters).
 
