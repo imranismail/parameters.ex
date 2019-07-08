@@ -2,6 +2,10 @@ defmodule ParametersTest do
   use Parameters.Case
   use Parameters
 
+  defmodule Haha do
+    use Parameters
+  end
+
   doctest Parameters
 
   @valid_params %{
