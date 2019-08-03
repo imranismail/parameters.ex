@@ -1,4 +1,4 @@
-defmodule Parameters.ParamsNode do
+defmodule Parameters.Params do
   defstruct [
     :id,
     fields: []
@@ -10,7 +10,7 @@ defmodule Parameters.ParamsNode do
   def parse(name, ast) when is_list(ast) do
     Enum.reduce(ast, struct(__MODULE__), fn field, schema ->
       Map.update!(schema, :fields, fn fields ->
-        [Parameters.FieldNode.parse(field) | fields]
+        [Parameters.Field.parse(field) | fields]
       end)
     end)
     |> Map.put(:id, name)

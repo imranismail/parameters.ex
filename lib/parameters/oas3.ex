@@ -4,85 +4,142 @@ defmodule Parameters.OAS3 do
   def type_mapper(:float), do: :number
   def type_mapper(any), do: any
 
+  def render_paths(routes, content_types) do
+    routes
+    |> Enum.group_by(&(&1.path), &render_operation(&1, content_types))
+    |> Enum.map(fn {key, val} -> {key, Map.new(val)} end)
+    |> Map.new()
+  end
+
+  def render_operation(route, content_types) do
+    params = Enum.find(route.plug.__parameters__(), &(&1.id == route.plug_opts))
+
+    operation =
+      Map.new()
+      |> put_parameters(route, params.fields, content_types)
+      |> put_default_response(route, content_types)
+
+    {route.verb, operation}
+  end
+
+  def put_parameters(operation, %{verb: :get}, fields, _content_types) do
+    parameters =
+      for field <- fields do
+        Map.new(
+          in: "query",
+          name: field.id,
+          required: Keyword.get(field.opts, :required, false),
+          schema: Map.new(
+            type: type_mapper(field.type)
+          ),
+          description: Keyword.get(field.opts, :description, "")
+        )
+      end
+
+    Map.put(operation, :parameters, parameters)
+  end
+
+  def put_parameters(operation, route, fields, content_types) do
+    req_body = Map.new(
+      required: true,
+      description: ""
+    )
+
+    content =
+      for pipeline <- route.pipe_through, Map.has_key?(content_types, pipeline), into: Map.new() do
+        content_type = Map.get(content_types, pipeline)
+
+        required_fields =
+          for field <- fields, Keyword.get(field.opts, :required, false) do
+            field.id
+          end
+
+        properties =
+          for field <- fields, into: Map.new do
+            {field.id, Map.new(type: type_mapper(field.type))}
+          end
+
+        example =
+          for field <- fields, into: Map.new do
+            {field.id, type_mapper(field.type)}
+          end
+
+        content = Map.new(
+          schema: Map.new(
+            required: required_fields,
+            properties: properties
+          ),
+          example: example
+        )
+
+        {content_type, content}
+      end
+
+    req_body = Map.put(req_body, :content, content)
+
+    Map.put(operation, :requestBody, req_body)
+  end
+
+  def put_default_response(operation, route, content_types) do
+    content =
+      for pipeline <- route.pipe_through, Map.has_key?(content_types, pipeline), into: Map.new() do
+        content_type = Map.get(content_types, pipeline)
+        content = Map.new(
+          schema: Map.new(
+            type: :object
+          )
+        )
+
+        {content_type, content}
+      end
+
+    responses = Map.new(
+      default: Map.new(
+        description: "",
+        content: content
+      )
+    )
+
+    Map.put(operation, :responses, responses)
+  end
+
+
   defmacro __using__(opts) do
-    version = Keyword.fetch!(opts, :version)
-    title = Keyword.fetch!(opts, :title)
     content_types = Keyword.fetch!(opts, :content_types)
     accepts = Keyword.fetch!(opts, :accepts)
+    otp_app = Keyword.fetch!(opts, :otp_app)
+    info = Keyword.fetch!(opts, :info)
 
     quote do
-      def generate do
-        config = Application.get_env(unquote(opts[:otp_app]), __MODULE__)
-        router = Keyword.fetch!(config, :router)
-        routes = router.__routes__()
-        accepts = unquote(accepts)
-        content_types = unquote(content_types)
+      @content_types Map.new(unquote(content_types))
+      @accepts Map.new(unquote(accepts))
+      @info Map.new(unquote(info))
+      @otp_app unquote(otp_app)
 
-        spec = %{
-          openapi: "3.0.0",
-          info: %{
-            title: unquote(title),
-            version: unquote(version)
-          }
-        }
+      def render do
+        routes = __parameters__(:routes)
 
-        key_fn = fn route -> route.path end
-        val_fn = fn route ->
-          parameters = route.plug.__parameters__()
-          node = Enum.find(parameters, fn node -> node.id == route.plug_opts end)
+        Map.new(
+          info: __parameters__(:info),
+          paths: Parameters.OAS3.render_paths(routes, __parameters__(:content_types))
+        )
+      end
 
-          key = "#{route.verb}"
-          val = %{
-            requestBody: %{
-              required: true,
-              description: "",
-              content: for pipeline <- route.pipe_through, into: %{} do
-                key = Keyword.fetch!(content_types, pipeline)
+      def __parameters__(:info), do: @info
+      def __parameters__(:accepts), do: @accepts
+      def __parameters__(:content_types), do: @content_types
 
-                val = %{
-                  schema: %{
-                    required: for field <- node.fields, field.options[:required] do
-                      field.id
-                    end,
-                    properties: for field <- node.fields, into: %{} do
-                      {field.id, %{
-                        type: Parameters.OpenAPI.type_mapper(field.type)
-                      }}
-                    end,
-                  }
-                }
+      def __parameters__(:routes) do
+        config = Application.get_env(@otp_app, __MODULE__)
 
-                {key, val}
-              end,
-            },
-            responses: %{
-              default: %{
-                description: "",
-                content: for pipeline <- route.pipe_through, into: %{} do
-                  key = Keyword.fetch!(content_types, pipeline)
-
-                  val = %{
-                    schema: %{
-                      type: :object
-                    }
-                  }
-
-                  {key, val}
-                end,
-              }
-            },
-          }
-
-          {key, val}
-        end
-
-        paths =
-          routes
-          |> Enum.group_by(key_fn, val_fn)
-          |> Enum.map(fn {key, val} -> {key, Enum.into(val, %{})} end)
-          |> Enum.into(%{})
-
-        Map.put(spec, :paths, paths)
+        config
+        |> Keyword.fetch!(:router)
+        |> apply(:__routes__, [])
+        |> Enum.filter(fn route ->
+          route.plug
+          |> apply(:__parameters__, [])
+          |> Enum.any?(fn params -> params.id == route.plug_opts end)
+        end)
       end
     end
   end
