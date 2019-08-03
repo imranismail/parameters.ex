@@ -6,7 +6,7 @@ defmodule Parameters.OAS3 do
 
   def render_paths(routes, content_types) do
     routes
-    |> Enum.group_by(&(&1.path), &render_operation(&1, content_types))
+    |> Enum.group_by(& &1.path, &render_operation(&1, content_types))
     |> Enum.map(fn {key, val} -> {key, Map.new(val)} end)
     |> Map.new()
   end
@@ -29,9 +29,7 @@ defmodule Parameters.OAS3 do
           in: "query",
           name: field.id,
           required: Keyword.get(field.opts, :required, false),
-          schema: Map.new(
-            type: type_mapper(field.type)
-          ),
+          schema: Map.new(type: type_mapper(field.type)),
           description: Keyword.get(field.opts, :description, "")
         )
       end
@@ -40,13 +38,16 @@ defmodule Parameters.OAS3 do
   end
 
   def put_parameters(operation, route, fields, content_types) do
-    req_body = Map.new(
-      required: true,
-      description: ""
-    )
+    req_body =
+      Map.new(
+        required: true,
+        description: ""
+      )
 
     content =
-      for pipeline <- route.pipe_through, Map.has_key?(content_types, pipeline), into: Map.new() do
+      for pipeline <- route.pipe_through,
+          Map.has_key?(content_types, pipeline),
+          into: Map.new() do
         content_type = Map.get(content_types, pipeline)
 
         required_fields =
@@ -55,22 +56,24 @@ defmodule Parameters.OAS3 do
           end
 
         properties =
-          for field <- fields, into: Map.new do
+          for field <- fields, into: Map.new() do
             {field.id, Map.new(type: type_mapper(field.type))}
           end
 
         example =
-          for field <- fields, into: Map.new do
+          for field <- fields, into: Map.new() do
             {field.id, type_mapper(field.type)}
           end
 
-        content = Map.new(
-          schema: Map.new(
-            required: required_fields,
-            properties: properties
-          ),
-          example: example
-        )
+        content =
+          Map.new(
+            schema:
+              Map.new(
+                required: required_fields,
+                properties: properties,
+                example: example
+              )
+          )
 
         {content_type, content}
       end
@@ -81,28 +84,10 @@ defmodule Parameters.OAS3 do
   end
 
   def put_default_response(operation, route, content_types) do
-    content =
-      for pipeline <- route.pipe_through, Map.has_key?(content_types, pipeline), into: Map.new() do
-        content_type = Map.get(content_types, pipeline)
-        content = Map.new(
-          schema: Map.new(
-            type: :object
-          )
-        )
-
-        {content_type, content}
-      end
-
-    responses = Map.new(
-      default: Map.new(
-        description: "",
-        content: content
-      )
-    )
+    responses = Map.new(default: Map.new(description: "OK"))
 
     Map.put(operation, :responses, responses)
   end
-
 
   defmacro __using__(opts) do
     content_types = Keyword.fetch!(opts, :content_types)
@@ -120,6 +105,7 @@ defmodule Parameters.OAS3 do
         routes = __parameters__(:routes)
 
         Map.new(
+          openapi: "3.0.0",
           info: __parameters__(:info),
           paths: Parameters.OAS3.render_paths(routes, __parameters__(:content_types))
         )
@@ -136,9 +122,7 @@ defmodule Parameters.OAS3 do
         |> Keyword.fetch!(:router)
         |> apply(:__routes__, [])
         |> Enum.filter(fn route ->
-          route.plug
-          |> apply(:__parameters__, [])
-          |> Enum.any?(fn params -> params.id == route.plug_opts end)
+          function_exported?(route.plug, :__parameters__, 0)
         end)
       end
     end
