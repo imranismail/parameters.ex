@@ -13,10 +13,11 @@ defmodule Parameters.OAS3 do
 
   def render_operation(route, content_types) do
     params = Enum.find(route.plug.__parameters__(), &(&1.id == route.plug_opts))
+    fields = params && params.fields
 
     operation =
       Map.new()
-      |> put_parameters(route, params.fields, content_types)
+      |> put_parameters(route, fields || [], content_types)
       |> put_default_response(route, content_types)
 
     {route.verb, operation}
@@ -83,7 +84,7 @@ defmodule Parameters.OAS3 do
     Map.put(operation, :requestBody, req_body)
   end
 
-  def put_default_response(operation, route, content_types) do
+  def put_default_response(operation, _route, _content_types) do
     responses = Map.new(default: Map.new(description: "OK"))
 
     Map.put(operation, :responses, responses)
