@@ -1,3 +1,6 @@
+# 2.0.1
+Add .formatter.exs to package
+
 # v0.1.1
 
 ## Bug fixes

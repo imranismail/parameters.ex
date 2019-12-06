@@ -23,7 +23,7 @@ defmodule Parameters.Mixfile do
   defp package do
     [
       name: :parameters,
-      files: ["lib", "mix.exs", "README*", "LICENSE*"],
+      files: ["lib", "mix.exs", "README.md", "CHANGELOG.md", "LICENSE.md", ".formatter.exs"],
       maintainers: ["Imran Ismail"],
       licenses: ["MIT"],
       links: %{"GitHub" => "https://github.com/imranismail/parameters.ex"}
