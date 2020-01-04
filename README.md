@@ -97,3 +97,70 @@ defmodule MyApp.PostController do
 end
 ```
 
+### Using A Sanitizer Plug
+
+```elixir
+defmodule Parameters.Sanitizer do
+  use Plug.Builder
+
+  alias Ecto.Changeset
+
+  plug :sanitize
+
+  defp sanitize(conn, _opts) do
+    case Parameters.params_for(conn) do
+      {:ok, params} ->
+        Map.put(conn, :params, params)
+      {:error, changeset} ->
+        errors = errors_from_changeset(changeset)
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> resp(:bad_request, Jason.encode!(errors))
+        |> send_resp()
+        |> halt()
+    end
+  end
+
+  defp errors_from_changeset(changeset) do
+    Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
+    end)
+  end
+end
+
+defmodule MyApp.PostController do
+  use MyApp, :web
+  use Parameters
+  
+  plug Parameters.Sanitizer
+
+  params do
+    # Schema fields + Changeset.validate_required
+    optional :limit, :integer, default: 10
+    optional :page, :integer, default: 1
+    requires :query, :string
+
+    # Schema embeds_many
+    requires :profiles, :array do
+      requires :access_key, :string
+      requires :secret_key, :string
+    end
+
+    # Schema embeds_one
+    requires :profile, :map do
+      requires :access_key, :string
+      requires :secret_key, :string
+    end
+  end
+
+  def index(conn, _params) do
+    # params are sanitized by plug
+    # errors are reported to user automatically
+    json(conn, params)
+  end
+end
+```
+
