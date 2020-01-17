@@ -1,7 +1,7 @@
 defmodule Parameters do
   alias Parameters.{
-    ParamsNode,
-    FieldNode
+    Params,
+    Field
   }
 
   defmacro __using__(_) do
@@ -17,18 +17,15 @@ defmodule Parameters do
 
   def __on_definition__(%{module: module}, _kind, name, _args, _guards, _body) do
     if ast = Module.get_attribute(module, :parameters_block) do
-      Module.put_attribute(module, :parameters, ParamsNode.parse(name, ast))
+      Module.put_attribute(module, :parameters, Params.parse(name, ast))
       Module.delete_attribute(module, :parameters_block)
     end
   end
 
   defmacro __before_compile__(env) do
-    for schema <- Module.get_attribute(env.module, :parameters) do
-      parent = Module.concat(Parameters, env.module)
-
-      quote do
-        unquote(define_schema(parent, schema))
-      end
+    quote do
+      unquote(define_schemas(env.module))
+      unquote(define_reflections())
     end
   end
 
@@ -69,8 +66,27 @@ defmodule Parameters do
     changeset_for(module, fun, params)
   end
 
-  defp define_schema(parent, node) do
-    module = Module.concat(parent, Macro.camelize("#{node.id}"))
+  defp define_reflections() do
+    quote do
+      def __parameters__ do
+        @parameters
+      end
+    end
+  end
+
+  defp define_schemas(module) do
+    parameters = Module.get_attribute(module, :parameters)
+    parent = Module.concat(Parameters, module)
+
+    for schema <- parameters do
+      quote do
+        unquote(define_schema(parent, schema))
+      end
+    end
+  end
+
+  defp define_schema(parent, params) do
+    module = Module.concat(parent, Macro.camelize("#{params.id}"))
 
     quote do
       defmodule unquote(module) do
@@ -79,12 +95,12 @@ defmodule Parameters do
         @primary_key false
 
         embedded_schema do
-          unquote(define_fields(node.fields))
+          unquote(define_fields(params.fields))
         end
 
-        unquote(define_changeset(node.fields))
+        unquote(define_changeset(params.fields))
 
-        unquote(define_embeds(module, node.fields))
+        unquote(define_embeds(module, params.fields))
       end
     end
   end
@@ -97,26 +113,26 @@ defmodule Parameters do
 
   defp define_fields(fields) do
     for field <- fields do
-      options = Keyword.take(field.options, [:default])
+      opts = Keyword.take(field.opts, [:default])
 
       case field do
-        %FieldNode{type: :map, fields: fields} when is_list(fields) ->
+        %Field{type: :map, fields: fields} when is_list(fields) ->
           quote do
             embeds_one unquote(field.id),
                        Module.concat(__MODULE__, Macro.camelize("#{unquote(field.id)}")),
-                       unquote(options)
+                       unquote(opts)
           end
 
-        %FieldNode{type: :array, fields: fields} when is_list(fields) ->
+        %Field{type: :array, fields: fields} when is_list(fields) ->
           quote do
             embeds_many unquote(field.id),
                         Module.concat(__MODULE__, Macro.camelize("#{unquote(field.id)}")),
-                        unquote(options)
+                        unquote(opts)
           end
 
-        %FieldNode{fields: nil} ->
+        %Field{fields: nil} ->
           quote do
-            field unquote(field.id), unquote(field.type), unquote(options)
+            field unquote(field.id), unquote(field.type), unquote(opts)
           end
       end
     end
@@ -131,21 +147,21 @@ defmodule Parameters do
     required_fields =
       fields
       |> Enum.filter(fn field ->
-        is_nil(field.fields) and Keyword.fetch!(field.options, :required)
+        is_nil(field.fields) and Keyword.fetch!(field.opts, :required)
       end)
       |> Enum.map(fn field -> field.id end)
 
     optional_embeds =
       fields
       |> Enum.filter(fn field ->
-        not is_nil(field.fields) and not Keyword.fetch!(field.options, :required)
+        not is_nil(field.fields) and not Keyword.fetch!(field.opts, :required)
       end)
       |> Enum.map(fn field -> field.id end)
 
     required_embeds =
       fields
       |> Enum.filter(fn field ->
-        not is_nil(field.fields) and Keyword.fetch!(field.options, :required)
+        not is_nil(field.fields) and Keyword.fetch!(field.opts, :required)
       end)
       |> Enum.map(fn field -> field.id end)
 

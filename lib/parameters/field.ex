@@ -1,9 +1,9 @@
-defmodule Parameters.FieldNode do
+defmodule Parameters.Field do
   defstruct [
     :id,
     :type,
     :fields,
-    options: []
+    opts: []
   ]
 
   def parse({:__block__, _metadata, ast}), do: parse(ast)
@@ -15,15 +15,15 @@ defmodule Parameters.FieldNode do
         opts = [required: name == :requires]
         fields = parse(ast)
         fields = if is_list(fields), do: fields, else: [fields]
-        struct(__MODULE__, id: field, type: type, options: opts, fields: fields)
+        struct(__MODULE__, id: field, type: type, opts: opts, fields: fields)
 
       [field, type, opts] ->
         opts = Keyword.put(opts, :required, name == :requires)
-        struct(__MODULE__, id: field, type: type, options: opts)
+        struct(__MODULE__, id: field, type: type, opts: opts)
 
       [field, type] ->
         opts = [required: name == :requires]
-        struct(__MODULE__, id: field, type: type, options: opts)
+        struct(__MODULE__, id: field, type: type, opts: opts)
     end
   end
 end
