@@ -90,7 +90,7 @@ defmodule Parameters do
   end
 
   defp define_embeds(parent, fields) do
-    for field <- fields, not is_nil(field.fields) do
+    for field <- fields, is_list(field.fields) do
       define_schema(parent, field)
     end
   end

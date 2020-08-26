@@ -9,34 +9,45 @@ defmodule ParametersTest do
   doctest Parameters
 
   @valid_params %{
-    root_opt: 1,
-    profile: %{
-      in_group_req: "required",
-      in_group_opt: "optional"
+    name: "Imran Ismail",
+    gender: "male",
+    password: "password123",
+    password_confirmation: "password123",
+    age: 27,
+    terms_of_service: true,
+    favourite_foods: ~w(waffle),
+    email: "imran.codely@gmail.com",
+    default_profile: %{
+      provider: "github",
+      username: "imranismail"
     },
     profiles: [
-      %{oneline: "required"}
+      %{
+        provider: "github",
+        username: "imranismail"
+      }
     ]
   }
 
   @invalid_params %{}
 
   params do
-    requires :root_req, :string, default: "required"
-    optional :root_opt, :integer
-
-    requires :profile, :map do
-      requires :in_group_req, :string
-      optional :in_group_opt, :string
-
-      optional :tendencies, :array do
-        optional :name, :string
-        optional :dunno, :string
-      end
-    end
+    requires :name, :string, exclusion: ~w(anonymous Anonymous)
+    requires :gender, :string, inclusion: ~w(male female)
+    requires :password, :string, confirmation: [], length: [min: 8]
+    requires :age, :integer, number: [greater_than: 18]
+    requires :terms_of_service, :boolean, acceptance: []
+    requires :favourite_foods, {:array, :string}, subset: ~w(pie waffle pancake)
+    requires :email, :string, format: ~r/@/
 
     requires :profiles, :array do
-      requires :oneline, :string
+      requires :provider, :string
+      requires :username, :string
+    end
+
+    requires :default_profile, :map do
+      requires :provider, :string
+      requires :username, :string
     end
   end
 
@@ -45,7 +56,7 @@ defmodule ParametersTest do
   end
 
   params do
-    requires :nope_nope, :string
+    requires :another_field, :string
   end
 
   def another_controller_action_mock(conn, _params) do
@@ -62,21 +73,18 @@ defmodule ParametersTest do
   end
 
   test "Parameters should be nestable like Ecto's inline embeds" do
-    assert module_defined?(Parameters.ParametersTest.ControllerActionMock.Profile)
-    assert module_defined?(Parameters.ParametersTest.ControllerActionMock.Profile.Tendencies)
+    assert module_defined?(Parameters.ParametersTest.ControllerActionMock.DefaultProfile)
     assert module_defined?(Parameters.ParametersTest.ControllerActionMock.Profiles)
   end
 
-  test "Schema.params_for/1 should validate parameters" do
+  test "Parameters.params_for/1 should validate parameters" do
     conn = phoenix_conn(ParametersTest, :controller_action_mock)
-
     assert {:ok, params} = Parameters.params_for(%{conn | params: @valid_params})
     assert {:error, %Ecto.Changeset{}} = Parameters.params_for(%{conn | params: @invalid_params})
   end
 
-  test "Schema.changeset_for/1 should return changeset" do
+  test "Parameters.changeset_for/1 should return changeset" do
     conn = phoenix_conn(ParametersTest, :controller_action_mock)
-
     assert %Ecto.Changeset{} = Parameters.changeset_for(%{conn | params: @valid_params})
   end
 
@@ -86,5 +94,61 @@ defmodule ParametersTest do
 
     conn = phoenix_conn(ParametersTest, :another_controller_action_mock)
     assert {:error, %Ecto.Changeset{}} = Parameters.params_for(%{conn | params: @invalid_params})
+  end
+
+  test "Changeset.validate_format declaration" do
+    conn = phoenix_conn(ParametersTest, :controller_action_mock)
+    invalid_params = Map.put(@valid_params, :email, "invalidformat")
+
+    assert {:error, changeset} = Parameters.params_for(%{conn | params: invalid_params})
+  end
+
+  test "Changeset.validate_length declaration" do
+    conn = phoenix_conn(ParametersTest, :controller_action_mock)
+    invalid_params = Map.put(@valid_params, :password, "2short")
+
+    assert {:error, changeset} = Parameters.params_for(%{conn | params: invalid_params})
+  end
+
+  test "Changeset.validate_subset declaration" do
+    conn = phoenix_conn(ParametersTest, :controller_action_mock)
+    invalid_params = Map.put(@valid_params, :favourite_foods, ["not", "in", "subset"])
+
+    assert {:error, changeset} = Parameters.params_for(%{conn | params: invalid_params})
+  end
+
+  test "Changeset.validate_inclusion declaration" do
+    conn = phoenix_conn(ParametersTest, :controller_action_mock)
+    invalid_params = Map.put(@valid_params, :gender, "not included")
+
+    assert {:error, changeset} = Parameters.params_for(%{conn | params: invalid_params})
+  end
+
+  test "Changeset.validate_acceptance declaration" do
+    conn = phoenix_conn(ParametersTest, :controller_action_mock)
+    invalid_params = Map.put(@valid_params, :terms_of_service, false)
+
+    assert {:error, changeset} = Parameters.params_for(%{conn | params: invalid_params})
+  end
+
+  test "Changeset.validate_confirmation declaration" do
+    conn = phoenix_conn(ParametersTest, :controller_action_mock)
+    invalid_params = Map.delete(@valid_params, :password_confirmation)
+
+    assert {:error, changeset} = Parameters.params_for(%{conn | params: invalid_params})
+  end
+
+  test "Changeset.validate_exclusion declaration" do
+    conn = phoenix_conn(ParametersTest, :controller_action_mock)
+    invalid_params = Map.put(@valid_params, :name, "Anonymous")
+
+    assert {:error, changeset} = Parameters.params_for(%{conn | params: invalid_params})
+  end
+
+  test "Changeset.validate_number declaration" do
+    conn = phoenix_conn(ParametersTest, :controller_action_mock)
+    invalid_params = Map.put(@valid_params, :age, 18)
+
+    assert {:error, changeset} = Parameters.params_for(%{conn | params: invalid_params})
   end
 end
